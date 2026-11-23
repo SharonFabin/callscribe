@@ -4,3 +4,4 @@
 *.wav
 *.png
 *.jsonl
+__pycache__/

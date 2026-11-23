@@ -1,0 +1,18 @@
+[Unit]
+Description=callscribe: offer to record calls, record them, transcribe them
+# needs the desktop session's environment (WAYLAND_DISPLAY, HYPRLAND_INSTANCE_SIGNATURE) for the card
+# and window titles; uwsm and other systemd-managed sessions start graphical-session.target
+After=pipewire-pulse.service graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/callscribe run
+# where you cloned callscribe; transcription is skipped without it
+Environment=CALLSCRIBE_TRANSCRIBER=%h/Projects/personal/callscribe/transcriber/transcribe.py
+# PipeWire restarting ends the daemon with an error: come back against the new server.
+# Quit in the tray menu exits cleanly and stays quit.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

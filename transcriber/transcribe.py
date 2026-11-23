@@ -13,11 +13,12 @@ A meeting is a folder with me.ogg (your microphone) and them.ogg (the call audio
   3. transcribe with a temperature fallback against repetition loops
 Writes transcript.md into the folder, skipping folders that have one.
 
-Usage: uv run transcribe.py <meeting dir>... [--force] [--device GPU]
+Usage: uv run transcribe.py <meeting dir>... [--pending] [--force] [--device GPU]
        uv run transcribe.py --yogurt [id prefix ...] [--days 7]   (import Yogurt meetings, read-only)
 Models: run setup_models.sh once.
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -206,15 +207,17 @@ def merge(me, them, gap=3.0):
     return "\n".join(f"[{stamp(a)}] **{who}:** {t}" for a, who, b, t in lines)
 
 
-def transcribe_meeting(folder: Path, models, audio_dir: Path | None = None):
-    """Write folder/transcript.md from audio_dir (default: the folder itself)."""
+def transcribe_meeting(folder: Path, models, audio_dir: Path | None = None, settle=False):
+    """Write folder/transcript.md from audio_dir (default: the folder itself). With `settle`, skip audio
+    that changed in the last SETTLE seconds (it may still be recording): for sweeps, not for a call
+    the recorder just finished."""
     t0 = time.time()
     audio_dir = audio_dir or folder
     me, them = (decode(audio_dir / f"{t}.ogg") if (audio_dir / f"{t}.ogg").exists() else None
                 for t in ("me", "them"))
     if me is None and them is None:  # nothing written: retried next run
         return print(f"{folder.name}: no audio", file=sys.stderr)
-    if any(time.time() - f.stat().st_mtime < SETTLE for f in audio_dir.glob("*.ogg")):
+    if settle and any(time.time() - f.stat().st_mtime < SETTLE for f in audio_dir.glob("*.ogg")):
         return print(f"{folder.name}: audio still being written, next run", file=sys.stderr)
     meta = json.loads((folder / "meta.json").read_text()) if (folder / "meta.json").exists() else {}
     # thresholds measured on real calls: mic room noise ~0.004 RMS, speech > 0.01; the call track is
@@ -268,24 +271,42 @@ def yogurt_meetings(ids, days):
         yield folder, audio
 
 
+def pending():
+    """Meeting folders with audio but no transcript (a crash, a reboot, a failed run). A call still being
+    recorded is left to the SETTLE check (ffmpeg writes the files continuously, silence included); its
+    meta.json can't tell, since a recording cut off by a logout never gets its end written."""
+    for folder in sorted(MEETINGS.glob("*/")):
+        if any(folder.glob("*.ogg")) and not (folder / "transcript.md").exists():
+            yield folder
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("folders", nargs="*", type=Path)
     p.add_argument("--yogurt", nargs="*", metavar="ID", help="import Yogurt meetings (all recent, or these ids)")
     p.add_argument("--days", type=float, default=7, help="with --yogurt and no ids: meetings of the last N days")
+    p.add_argument("--pending", action="store_true", help="every meeting folder with audio but no transcript")
     p.add_argument("--force", action="store_true", help="redo meetings that already have transcript.md")
     p.add_argument("--device", default="GPU", help="OpenVINO device (GPU, CPU)")
     args = p.parse_args()
 
-    todo = [(f, None) for f in args.folders] + (list(yogurt_meetings(args.yogurt, args.days))
-                                               if args.yogurt is not None else [])
-    todo = [(f, a) for f, a in todo if args.force or not (f / "transcript.md").exists()]
+    todo = [(f, None, False) for f in args.folders]
+    todo += [(f, a, True) for f, a in yogurt_meetings(args.yogurt, args.days)] if args.yogurt is not None else []
+    todo += [(f, None, True) for f in pending()] if args.pending else []
+    todo = [t for t in todo if args.force or not (t[0] / "transcript.md").exists()]
     if not todo:
         return print("nothing to transcribe", file=sys.stderr)
+    # one transcription at a time on the GPU (the models are ~1.5 GB each, memory is shared): wait for
+    # any other run, e.g. the hourly job and a call that just ended
+    OV_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    lock = open(OV_CACHE.parent / "gpu.lock", "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
     models, failed = Models(args.device), 0
-    for folder, audio_dir in todo:
+    for folder, audio_dir, settle in todo:
+        if not args.force and (folder / "transcript.md").exists():
+            continue  # another run did it while we waited for the lock
         try:
-            transcribe_meeting(folder, models, audio_dir)
+            transcribe_meeting(folder, models, audio_dir, settle)
         except Exception:  # one bad meeting must not block the others
             failed += 1
             print(f"FAILED {folder}", file=sys.stderr)
