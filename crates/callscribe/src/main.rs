@@ -5,6 +5,7 @@
 //! before the recorder decides when a call starts and ends.
 
 mod mic;
+mod tray;
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
@@ -43,7 +44,16 @@ fn log_mic() -> io::Result<()> {
     // picked up at the next event
     let mut sub = Command::new("pactl").arg("subscribe").stdout(Stdio::piped()).spawn()?;
     let events = BufReader::new(sub.stdout.take().expect("piped stdout"));
+    let tray = tray::spawn();
+    let show = |captures: &[mic::Capture]| {
+        let mut apps: Vec<String> =
+            captures.iter().filter(|c| !c.monitor && !c.app.is_empty()).map(|c| c.app.clone()).collect();
+        apps.sort();
+        apps.dedup();
+        let _ = tray.send(apps); // the tray thread is gone only when there is no tray
+    };
     let mut before = mic::snapshot()?;
+    show(&before);
     for c in &before {
         writeln!(log, "{}", serde_json::json!({"ts": now_ms(), "kind": "present", "capture": c}))?;
     }
@@ -63,6 +73,7 @@ fn log_mic() -> io::Result<()> {
         for change in mic::diff(&before, &after) {
             writeln!(log, "{}", serde_json::json!({"ts": now_ms(), "change": change}))?;
         }
+        show(&after);
         before = after;
     }
     // pactl exits when PipeWire restarts: fail so systemd restarts us against the new server

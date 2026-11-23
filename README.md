@@ -47,7 +47,7 @@ ln -s "$PWD/systemd/callscribe-log-mic.service" ~/.config/systemd/user/
 systemctl --user enable --now callscribe-log-mic.service
 ```
 
-It appends every change in who captures audio (app, device, paused, muted) to
+It shows a tray icon (a waveform) whose tooltip says which apps are using the microphone. It appends every change in who captures audio (app, device, paused, muted) to
 `~/.local/state/callscribe/mic-events.jsonl`. It uses about 3 MB of RAM and no CPU while idle.
 
 ## Recording widget
