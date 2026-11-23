@@ -1,0 +1,12 @@
+[Unit]
+Description=callscribe: log which apps capture audio (no audio is read)
+After=pipewire-pulse.service
+
+[Service]
+ExecStart=%h/.local/bin/callscribe log-mic
+# pactl subscribe ends when PipeWire restarts; come back against the new server
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

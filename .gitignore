@@ -1,0 +1,6 @@
+/target
+# runtime output never belongs in the repo: recordings, screenshots, transcripts, logs
+*.ogg
+*.wav
+*.png
+*.jsonl
