@@ -1,8 +1,15 @@
 [workspace]
-members = ["crates/callscribe"]
+members = ["crates/callscribe", "crates/widget"]
 resolver = "3"
 
 [profile.release]
 lto = true
 codegen-units = 1
 strip = true
+
+# Rune builds on patched copies of these (see its Cargo.toml); apps using Rune must patch them too
+[patch.crates-io]
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "9a915b1" }
+winit = { git = "https://github.com/anomalyco/rune", rev = "9a915b1" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "9a915b1" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "9a915b1" }

@@ -1,0 +1,10 @@
+[package]
+name = "callscribe-widget"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Floating recording pill for callscribe"
+
+[dependencies]
+# pre-release: pinned to a rev of `dev` (never rewritten), as Rune asks
+rune = { git = "https://github.com/anomalyco/rune", rev = "9a915b1", default-features = false, features = ["embedded-fonts", "accessibility"] }

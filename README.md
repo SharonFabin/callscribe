@@ -7,8 +7,8 @@ the call side as two separate tracks, and when the call ends transcribes both wi
 [ivrit.ai](https://huggingface.co/ivrit-ai)'s Hebrew Whisper or stock Whisper, through OpenVINO.
 
 **Status: early.** Working today: the transcriber (including importing meetings recorded by
-Yogurt) and the microphone event logger. In progress: the recorder, the floating
-recording widget and the meetings app.
+Yogurt) and the microphone event logger. Also the floating recording widget (not yet driven by
+the recorder). In progress: the recorder and the meetings app.
 
 ## How it works (the recorder parts are being built)
 
@@ -49,6 +49,19 @@ systemctl --user enable --now callscribe-log-mic.service
 
 It appends every change in who captures audio (app, device, paused, muted) to
 `~/.local/state/callscribe/mic-events.jsonl`. It uses about 3 MB of RAM and no CPU while idle.
+
+## Recording widget
+
+A small pill floating at the top of the screen while a call records: elapsed time, the meeting's title (Hebrew
+titles render right to left), and a stop button. Built with [Rune](https://github.com/anomalyco/rune); on
+Wayland it is a layer-shell overlay (XWayland where there is no layer-shell) that never takes keyboard focus. Hebrew
+titles need the Noto Sans Hebrew font installed. It redraws once a second and sleeps in
+between.
+
+```sh
+cargo run --release -p callscribe-widget -- --title "Weekly sync"   # prints "stop" when stopped
+cargo run -p callscribe-widget -- --scene hebrew --snap pill.png     # headless render (debug builds)
+```
 
 ## License
 
